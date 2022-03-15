@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.7;
-
-// tokens are transfered to escrow contract from users
-// the escrow holds funds until certain condition is met
-// the seller and buyer should both agree on the transaction
-// one party should not able to default the transaction at the expense of other parties
+pragma solidity ^0.8.6;
 
 
 contract Escrow {
@@ -12,10 +7,6 @@ contract Escrow {
     // buyer and seller address
     address payable public Buyer;
     address payable public Seller;
-
-
-    // documnets who deposited how much tokens
-    mapping(address => uint) Vault;
 
 
     // state enum of the transaction
@@ -58,15 +49,10 @@ contract Escrow {
 
     // caller must be buyer
     modifier MustBeBuyer(){
-        require(msg.sender == Seller, "Error, only buyer can do that");
+        require(msg.sender == Buyer, "Error, only buyer can do that");
         _;
     }
 
-
-
-    function GetCurrState() public view returns(uint256) {
-        // return CurrentState;
-    }
 
 
     // returns contract balance
@@ -84,6 +70,8 @@ contract Escrow {
 
     // seller confirm shipping
     function ConfirmShipping() MustBeSeller InState(State.waiting_for_payment) public {
+        
+        require(address(this).balance > 0, "Buyer should be paying something atleast");
 
         // go into the next state
         CurrentState = State.waiting_for_delivery;
@@ -101,13 +89,12 @@ contract Escrow {
 
 
     // refund function
-    function Refund() MustBeSeller InState(State.transaction_complete) public {
+    function Refund() MustBeSeller InState(State.waiting_for_payment) public {
+        
+        require(address(this).balance > 0, "Buyer should be paying something atleast");
         
         // give back the token to the buyer
         Buyer.transfer(address(this).balance);
-        
-        // set state back to initial state
-        CurrentState = State.waiting_for_payment;
 
     }
 

@@ -1,16 +1,18 @@
 import React, { Component } from 'react'
-import { Button, Card, ListGroup, InputGroup, FormControl } from 'react-bootstrap';
+import { Button, Card, ListGroup, InputGroup, FormControl } from 'react-bootstrap'
+import Web3 from 'web3';
+import detectEthereumProvider from '@metamask/detect-provider';
+import ContractABI from './Escrow_abi.json'
+
 
 
 // TransactionState = {
-//     waiting_for_payment: "1",
-//     waiting_for_delivery: "2",
-//     transaction_complete: "3" 
+//     waiting_for_payment: "0",
+//     waiting_for_delivery: "1",
+//     transaction_complete: "2" 
 // }
 
 
-// this is the deployed contract address using remix
-const contractAddress = ''
 
 
 export default class BuyerSellerPanel extends Component {
@@ -20,11 +22,13 @@ export default class BuyerSellerPanel extends Component {
         
         // states
         this.state = {
-            ConnectedAddr:"",
-            BuyerAddr: "0x42d4C344628abBEEac2DBD08e23E7Ea5D4561E59",
-            SellerAddr: "0x20cacBCcB5aC43A4c0E4d7b458dfcB71608c3cA6",
-            CurrState: 1,
-            AmountDeposited: 0
+            ContractAddr: "0x5e32c9fD2c23011D54a11cd967eEc7fc44114126",
+            ConnectedAddr: "",
+            BuyerAddr: "",
+            SellerAddr: "",
+            CurrState: 0,
+            AmountDeposited: 0,
+            Contract: null
         }
 
         // refs
@@ -32,14 +36,53 @@ export default class BuyerSellerPanel extends Component {
 
     }
 
+    async componentDidMount(){
+        await this.Connect()
+    }
+
+
+
+    Connect = async () => {
+
+        // detect metamask
+        console.log("Connecting to metamask...")
+        const provider = await detectEthereumProvider()
+        
+        
+        if (provider) {
+            
+            // save connected wallet address in state
+            // console.log(provider.selectedAddress)
+            this.setState({ ConnectedAddr: provider.selectedAddress.toUpperCase()  })
+
+            // create web 3 conponent, attach to window and load contract
+            window.web3 = new Web3(provider)
+            let contract = new window.web3.eth.Contract(ContractABI, this.state.ContractAddr)
+
+            // set contract to state
+            this.setState({ Contract: contract })
+
+            // update contract stats
+            this.UpdateContractStats()
+
+            return true
+        } else {
+            console.log('MetaMask must be installed to run this DApp.')
+            return false
+        }
+    }
+
+
+
+
     // render contract current state
     GiveState = () => {
         switch (this.state.CurrState) {
-            case 1:
+            case 0:
                 return "Waiting for payment"
-            case 2:
+            case 1:
                 return "Waiting for delivery"
-            case 3:
+            case 2:
                 return "Transaction Complete"
             default:
                 alert("Error, State not recognized: " + this.state.CurrState)
@@ -54,6 +97,10 @@ export default class BuyerSellerPanel extends Component {
 
     // return true if connected metamask addr matches buyer
     isBuyer = () => {
+        
+        console.log(this.state.BuyerAddr)
+        console.log(this.state.ConnectedAddr)
+        
         if (this.state.ConnectedAddr === this.state.BuyerAddr) {
             return true
         }
@@ -75,14 +122,38 @@ export default class BuyerSellerPanel extends Component {
 
 
     // seller confirm 
-    Seller_Confirm_Token = () => {
+    Seller_Confirm_Token = async () => {
         if (!this.isSeller()) return
 
-        console.log("Seller confirm received token and send the goods")
+        console.log("Seller confirm received token and send the goods " + this.state.ConnectedAddr)
         
-        // call smart contract function
         
 
+        // call smart contract function
+        await this.state.Contract.methods.ConfirmShipping()
+        .call({from: this.state.ConnectedAddr}, function(error, result){
+            console.log(error)
+            console.log(result)
+
+        })
+        
+
+        // pull contract state
+        this.UpdateContractStats()
+    }
+
+    Seller_Refund_Token = async () => {
+        if (!this.isSeller()) return
+
+        console.log("Seller gives buyer a refund")
+
+        // call smart contract function
+        let result = await this.state.Contract.methods.Refund().call({from: this.state.ConnectedAddr})
+        console.log(result)
+
+
+        // pull contract state
+        this.UpdateContractStats()
     }
 
 
@@ -92,20 +163,61 @@ export default class BuyerSellerPanel extends Component {
 
         console.log("Buyer confirm received goods")
 
+
+        // pull contract state
+        this.UpdateContractStats()
     }
 
 
     Buyer_SendToken = async () => {
         
         if (!this.isBuyer()) return
-        
+        if (!this.BuyerTokenInput.current.value){
+            alert("please enter token amount!")
+            return
+        }
         console.log(this.BuyerTokenInput.current.value)
         console.log("Buyer send tokens")
+        
+        // call smart contract function and send tokens
+        let result = await this.state.Contract.methods.MakePayment()
+        .send({
+            from: this.state.ConnectedAddr, 
+            value: window.web3.utils.toWei(this.BuyerTokenInput.current.value) // get user input value
+        })
+        .on('error', function(error, receipt) { 
+            alert(error.message)
+        })
+        console.log(result)
+
+        // pull contract state
+        this.UpdateContractStats()
         
     }
 
 
+    UpdateContractStats = async () => {
+        let buyer = await this.state.Contract.methods.Buyer().call()
+        let seller = await this.state.Contract.methods.Seller().call()
+        let balance = await this.state.Contract.methods.GetBalance().call()
+        let state = await this.state.Contract.methods.CurrentState().call()
 
+
+        console.log(buyer)
+        console.log(seller)
+        console.log(balance)
+        console.log(state)
+
+
+        this.setState({ 
+            BuyerAddr: buyer.toUpperCase(),
+            SellerAddr: seller.toUpperCase(),
+            AmountDeposited: window.web3.utils.fromWei(balance),
+            CurrState: parseInt(state)
+        })
+
+
+    }
 
 
 
@@ -113,6 +225,8 @@ export default class BuyerSellerPanel extends Component {
         return (
             <Card body style={{ maxWidth: "60vw", margin: "auto", marginTop: "20px", backgroundColor: "#e0c9a6"}}>
                 <h1>Escrow Contract</h1>
+                <p style={{color: "#333", fontSize: "20px"}}>Connected Wallet: {this.state.ConnectedAddr}</p>
+
 
                 {/* contract stats */}
                 <Card style={{ width: '60%', margin: 'auto', marginTop: '20px'}}>
@@ -125,7 +239,7 @@ export default class BuyerSellerPanel extends Component {
                             <ListGroup.Item style={{color: 'white', backgroundColor: "#00c153"}}>📥Buyer: {this.state.BuyerAddr}</ListGroup.Item>
                             <ListGroup.Item style={{color: 'white', backgroundColor: "#ff364d"}}>📤Seller: {this.state.SellerAddr}</ListGroup.Item>
                             <ListGroup.Item style={{color: 'white', backgroundColor: "#ff8d36"}}>🛠State: {this.GiveState()}</ListGroup.Item>
-                            <ListGroup.Item style={{color: 'white', backgroundColor: "#364bff"}}>💰Amount Deposited: {this.state.AmountDeposited}</ListGroup.Item>
+                            <ListGroup.Item style={{color: 'white', backgroundColor: "#364bff"}}>💰Amount Deposited: {this.state.AmountDeposited} DEV</ListGroup.Item>
                         </ListGroup>
 
                     </Card.Body>
@@ -136,21 +250,22 @@ export default class BuyerSellerPanel extends Component {
                 <div style={{ display: "flex", margin: 'auto', marginTop: '20px'}}>
                     
                     {/* seller interface */}
-                    <Card style={{ width: '18rem', margin: 'auto' }}>
+                    <Card style={{ width: '45%', margin: 'auto' }}>
                         <Card.Body>
                             <Card.Title>Seller Interface</Card.Title>
                             <Card.Subtitle className="mb-2 text-muted">Sellers Functions</Card.Subtitle>
 
                             {/* seller functions */}
                             <div style={{ display: 'grid', gridGap: "10px" }}>
-                                <Button variant="success" size="lg" onClick={this.Seller_Confirm_Token}>Confirm Token Received and Ship Goods</Button>
+                                <Button disabled={this.state.CurrState === 0 ? false : true} variant="success" size="lg" onClick={this.Seller_Confirm_Token}>Confirm Token Received and Ship Goods</Button>
+                                <Button disabled={this.state.CurrState === 0 ? false : true} variant="success" size="lg" onClick={this.Seller_Refund_Token}>Give Buyer a Refund</Button>
                             </div>
                             
                         </Card.Body>
                     </Card>
                     
                     {/* buyer interface */}
-                    <Card style={{ width: '18rem', margin: 'auto' }}>
+                    <Card style={{ width: '45%', margin: 'auto' }}>
                         <Card.Body>
                             <Card.Title>Buyer Interface</Card.Title>
                             <Card.Subtitle className="mb-2 text-muted">Buyers Functions</Card.Subtitle>
@@ -158,7 +273,7 @@ export default class BuyerSellerPanel extends Component {
                             {/* buyer functions */}
                             <div style={{ display: 'grid', gridGap: "10px" }}>
                                 <hr/>
-                                <Card.Text>This function sends token to the escrow contract</Card.Text>
+                                <Card.Text>This function sends token to the escrow contract, can be only called in Waiting for payment state</Card.Text>
                                 <InputGroup className="mb-3">
                                     <FormControl
                                         ref={this.BuyerTokenInput}
@@ -167,10 +282,10 @@ export default class BuyerSellerPanel extends Component {
                                     />
                                     <InputGroup.Text id="basic-addon2">DEV</InputGroup.Text>
                                 </InputGroup>
-                                <Button disabled={this.state.CurrState === 1 ? false : true} variant="success" size="lg" onClick={this.Buyer_SendToken}>Send Token to Escrow</Button>
+                                <Button disabled={this.state.CurrState === 0 ? false : true} variant="success" size="lg" onClick={this.Buyer_SendToken}>Send Token to Escrow</Button>
                                 <hr/>
-                                <Card.Text>This function will let escrow contract send buyers token to seller</Card.Text>
-                                <Button variant="success" size="lg" onClick={this.Buyer_Confirm_Goods}>Confirm Goods Received</Button>
+                                <Card.Text>This function will let escrow contract send buyers token to seller, can be only called in Waiting for delivery state</Card.Text>
+                                <Button disabled={this.state.CurrState === 1 ? false : true} variant="success" size="lg" onClick={this.Buyer_Confirm_Goods}>Confirm Goods Received</Button>
                             </div>
 
                         </Card.Body>

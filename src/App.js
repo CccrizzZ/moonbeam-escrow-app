@@ -7,7 +7,7 @@ import { Navbar, Container } from 'react-bootstrap';
 
 function App() {
   return (
-    <div className="App" style={{backgroundColor: '#0d1117', height: '100vh'}}>
+    <div className="App" style={{backgroundColor: '#0d1117', height: '130vh'}}>
       
       {/* nav bar */}
       <Navbar bg="dark" variant="dark">
