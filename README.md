@@ -3,4 +3,4 @@
 npm i
 npm start
 ```
-![sc](https://github.com/CccrizzZ/moonbeam-react-app/blob/master/sc.png)
+![sc](https://github.com/CccrizzZ/moonbeam-react-app/blob/main/sc.png)
