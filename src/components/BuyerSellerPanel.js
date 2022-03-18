@@ -1,17 +1,8 @@
 import React, { Component } from 'react'
-import { Button, Card, ListGroup, InputGroup, FormControl } from 'react-bootstrap'
+import { Button, Card, ListGroup, InputGroup, FormControl, Alert, Spinner } from 'react-bootstrap'
 import Web3 from 'web3';
 import detectEthereumProvider from '@metamask/detect-provider';
 import ContractABI from './Escrow_abi.json'
-
-
-
-// TransactionState = {
-//     waiting_for_payment: "0",
-//     waiting_for_delivery: "1",
-//     transaction_complete: "2" 
-// }
-
 
 
 
@@ -22,13 +13,14 @@ export default class BuyerSellerPanel extends Component {
         
         // states
         this.state = {
-            ContractAddr: "0x5e32c9fD2c23011D54a11cd967eEc7fc44114126",
+            ContractAddr: "0x5e32c9fD2c23011D54a11cd967eEc7fc44114126",  // paste contract address here
             ConnectedAddr: "",
             BuyerAddr: "",
             SellerAddr: "",
             CurrState: 0,
             AmountDeposited: 0,
-            Contract: null
+            Contract: null,
+            IsLoading: false
         }
 
         // refs
@@ -37,11 +29,12 @@ export default class BuyerSellerPanel extends Component {
     }
 
     async componentDidMount(){
+        // look for metamask
         await this.Connect()
     }
 
 
-
+    // connect to metamask
     Connect = async () => {
 
         // detect metamask
@@ -97,10 +90,6 @@ export default class BuyerSellerPanel extends Component {
 
     // return true if connected metamask addr matches buyer
     isBuyer = () => {
-        
-        console.log(this.state.BuyerAddr)
-        console.log(this.state.ConnectedAddr)
-        
         if (this.state.ConnectedAddr === this.state.BuyerAddr) {
             return true
         }
@@ -125,50 +114,53 @@ export default class BuyerSellerPanel extends Component {
     Seller_Confirm_Token = async () => {
         if (!this.isSeller()) return
 
-        console.log("Seller confirm received token and send the goods " + this.state.ConnectedAddr)
-        
-        
+        console.log("Seller confirm received token and send the goods ")
 
+        // show the alert
+        this.ToggleWaitingAlert()
+  
         // call smart contract function
-        await this.state.Contract.methods.ConfirmShipping()
-        .call({from: this.state.ConnectedAddr}, function(error, result){
-            console.log(error)
-            console.log(result)
-
+        let result = await this.state.Contract.methods.ConfirmShipping()
+        .send({
+            from: this.state.ConnectedAddr
         })
-        
+        console.log(result)
 
+        // hide alert
+        this.ToggleWaitingAlert()
         // pull contract state
         this.UpdateContractStats()
     }
 
+
+
+
+    // seller refund
     Seller_Refund_Token = async () => {
         if (!this.isSeller()) return
 
-        console.log("Seller gives buyer a refund")
+        console.log("Seller gives buyer a refund, please wait...")
+        
+        // show the alert
+        this.ToggleWaitingAlert()
 
         // call smart contract function
-        let result = await this.state.Contract.methods.Refund().call({from: this.state.ConnectedAddr})
+        let result = await this.state.Contract.methods.Refund()
+        .send({
+            from: this.state.ConnectedAddr
+        })
         console.log(result)
 
-
+        // hide alert
+        this.ToggleWaitingAlert()
         // pull contract state
         this.UpdateContractStats()
+
     }
 
 
-    // buyer confirm received goods
-    Buyer_Confirm_Goods = async () => {
-        if (!this.isBuyer()) return
 
-        console.log("Buyer confirm received goods")
-
-
-        // pull contract state
-        this.UpdateContractStats()
-    }
-
-
+    // buyer send token
     Buyer_SendToken = async () => {
         
         if (!this.isBuyer()) return
@@ -177,8 +169,12 @@ export default class BuyerSellerPanel extends Component {
             return
         }
         console.log(this.BuyerTokenInput.current.value)
-        console.log("Buyer send tokens")
-        
+        console.log("Buyer send tokens, please wait...")
+
+        // show the alert
+        this.ToggleWaitingAlert()
+
+
         // call smart contract function and send tokens
         let result = await this.state.Contract.methods.MakePayment()
         .send({
@@ -190,25 +186,70 @@ export default class BuyerSellerPanel extends Component {
         })
         console.log(result)
 
+        // hide alert
+        this.ToggleWaitingAlert()
         // pull contract state
         this.UpdateContractStats()
         
+        
     }
 
+    
+    
+    
+    // buyer confirm received goods
+    Buyer_Confirm_Goods = async () => {
+        if (!this.isBuyer()) return
+        
+        console.log("Buyer confirm received goods, please wait...")
+        
+        // show the alert
+        this.ToggleWaitingAlert()
 
+        // call smart contract function
+        let result = await this.state.Contract.methods.ConfirmReceiving()
+        .send({
+            from: this.state.ConnectedAddr
+        })
+        console.log(result)
+        
+        
+        // hide alert
+        this.ToggleWaitingAlert()
+        // pull contract state
+        this.UpdateContractStats()
+
+    }
+
+    
+
+    // toggle the waiting alert component 
+    ToggleWaitingAlert = () => {
+        this.setState({
+            IsLoading: !this.state.IsLoading
+        })
+    }
+    
+    
+    
+    // pull info from smart contract
     UpdateContractStats = async () => {
+        // show the alert
+        this.ToggleWaitingAlert()
+
+        // get info from contract
         let buyer = await this.state.Contract.methods.Buyer().call()
         let seller = await this.state.Contract.methods.Seller().call()
         let balance = await this.state.Contract.methods.GetBalance().call()
         let state = await this.state.Contract.methods.CurrentState().call()
 
+        console.log("Contract Info Updated~~")
+        // console.log(buyer)
+        // console.log(seller)
+        // console.log(balance)
+        // console.log(state)
 
-        console.log(buyer)
-        console.log(seller)
-        console.log(balance)
-        console.log(state)
-
-
+        // save info in state
         this.setState({ 
             BuyerAddr: buyer.toUpperCase(),
             SellerAddr: seller.toUpperCase(),
@@ -216,6 +257,8 @@ export default class BuyerSellerPanel extends Component {
             CurrState: parseInt(state)
         })
 
+        // hdie alert
+        this.ToggleWaitingAlert()
 
     }
 
@@ -224,18 +267,22 @@ export default class BuyerSellerPanel extends Component {
     render() {
         return (
             <Card body style={{ maxWidth: "60vw", margin: "auto", marginTop: "20px", backgroundColor: "#e0c9a6"}}>
-                <h1>Escrow Contract</h1>
-                <p style={{color: "#333", fontSize: "20px"}}>Connected Wallet: {this.state.ConnectedAddr}</p>
-
+                <Button style={{ fontSize: "16px"}} onClick={this.Connect}>Connected Wallet: {this.state.ConnectedAddr}</Button>
+                <Alert variant="warning" style={{ marginTop: "10px" }} show={this.state.IsLoading}>
+                    <Alert.Heading>Waiting for Blockchain to Execute Order......</Alert.Heading>
+                    <Spinner animation="border" variant="success" />
+                </Alert>
 
                 {/* contract stats */}
                 <Card style={{ width: '60%', margin: 'auto', marginTop: '20px'}}>
                     <Card.Body>
                         <Card.Title>Escrow Contract</Card.Title>
-                        <Card.Subtitle className="mb-2 text-muted">Smart Contract Stats</Card.Subtitle>
+                        <Card.Subtitle className="mb-2 text-muted"></Card.Subtitle>
+                        <hr/>
                         
                         {/* info from smart contract */}
                         <ListGroup >
+                            <ListGroup.Item style={{color: 'white', backgroundColor: "#9400D3"}}>📜Contract Address: {this.state.ContractAddr}</ListGroup.Item>
                             <ListGroup.Item style={{color: 'white', backgroundColor: "#00c153"}}>📥Buyer: {this.state.BuyerAddr}</ListGroup.Item>
                             <ListGroup.Item style={{color: 'white', backgroundColor: "#ff364d"}}>📤Seller: {this.state.SellerAddr}</ListGroup.Item>
                             <ListGroup.Item style={{color: 'white', backgroundColor: "#ff8d36"}}>🛠State: {this.GiveState()}</ListGroup.Item>
@@ -254,6 +301,7 @@ export default class BuyerSellerPanel extends Component {
                         <Card.Body>
                             <Card.Title>Seller Interface</Card.Title>
                             <Card.Subtitle className="mb-2 text-muted">Sellers Functions</Card.Subtitle>
+                            <hr/>
 
                             {/* seller functions */}
                             <div style={{ display: 'grid', gridGap: "10px" }}>

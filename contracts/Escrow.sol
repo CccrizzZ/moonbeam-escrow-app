@@ -71,7 +71,6 @@ contract Escrow {
     // seller confirm shipping
     function ConfirmShipping() MustBeSeller InState(State.waiting_for_payment) public {
         
-        require(address(this).balance > 0, "Buyer should be paying something atleast");
 
         // go into the next state
         CurrentState = State.waiting_for_delivery;
@@ -90,8 +89,6 @@ contract Escrow {
 
     // refund function
     function Refund() MustBeSeller InState(State.waiting_for_payment) public {
-        
-        require(address(this).balance > 0, "Buyer should be paying something atleast");
         
         // give back the token to the buyer
         Buyer.transfer(address(this).balance);
